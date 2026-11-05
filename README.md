@@ -31,6 +31,10 @@ El anfitrión crea una sala con su cuenta habitual; los invitados usan código, 
 
 Cuando todos responden o vence el tiempo, aparecen la solución, la explicación y la clasificación automáticamente, sin desplegables. El anfitrión pulsa **Siguiente**: se muestra la tabla durante cinco segundos y comienza el próximo reto automáticamente. Puede usar **Siguiente** durante un reto para cerrarlo y continuar. Tras el último aparece el podio. El código se compara como texto; nunca se ejecuta código escrito por jugadores.
 
+La pregunta ocupa la tarjeta principal. Después del cierre, la opción correcta y la solución se resaltan en verde para ambos roles. Recargar la página recupera la misma identidad, sala, respuestas enviadas, puntos y plazo; un fallo de conexión permite reintentar sin borrar la sesión. Las identidades se aíslan por pestaña para poder probar anfitrión e invitado en el mismo navegador.
+
+Los sonidos se habilitan tras interactuar con la página: cuenta regresiva, últimos segundos y fanfarria del ganador. El botón del altavoz permite silenciarlos. El ganador aparece destacado con una lluvia de confeti; se respeta la preferencia de movimiento reducido. El acceso desde las diapositivas se conserva, y el juego no contiene un enlace de vuelta.
+
 El reloj de la base de datos determina plazos y puntos. Los contadores del teléfono no escriben cada segundo. Supabase Realtime notifica cambios; el cliente recupera el estado al vencer un plazo, al volver a la pestaña y cada 30 segundos como recuperación. Sin clientes conectados, la transición se procesa al recuperar la sala conservando el plazo original.
 
 ## Seguridad
