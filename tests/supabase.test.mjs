@@ -24,7 +24,7 @@ async function setup(t,{upgrade=true}={}){
   await db.query('insert into auth.users values($1)',[HOST]);await db.query('insert into arena_private.admins values($1)',[HOST]);
   for(let i=1;i<=55;i++)await db.query('insert into auth.users values($1)',[guest(i)]);
   for(let i=0;i<12;i++)await db.query('insert into arena_private.questions(position,payload) values($1,$2)',[i,JSON.stringify({id:`old-${i}`,type:'quiz',title:'Legacy',prompt:'Legacy synthetic',options:['A','B'],answer:1,points:1000,explanation:'Legacy fixture'})]);
-  const apply=async()=>{await db.exec(await migration());for(let i=0;i<12;i++)await db.query('insert into arena_private.questions(version,position,payload) values(2,$1,$2) on conflict(version,position) do update set payload=excluded.payload',[i,JSON.stringify(bank[i])]);};
+  const apply=async()=>{await db.exec(await migration());for(let i=0;i<12;i++)await db.query('insert into arena_private.questions(version,position,payload) values(2,$1,$2) on conflict(version,position) do update set payload=excluded.payload',[i,JSON.stringify(bank[i])]);await db.exec(await readFile(new URL('../supabase/migrations/003_mobile_challenges.sql',import.meta.url),'utf8'));};
   if(upgrade)await apply();
   async function as(uid,fn){await db.query("select set_config('request.jwt.claim.sub',$1,false)",[uid||'']);await db.exec('set role authenticated');try{return await fn();}finally{await db.exec('reset role');}}
   const command=(uid,action,payload={})=>as(uid,async()=>(await db.query('select public.arena_command($1,$2) as data',[action,JSON.stringify({flowVersion:2,...payload})])).rows[0].data);
@@ -117,4 +117,16 @@ test('ArtyQuest: la actualización conserva salas, banco anterior, cuentas y per
   assert.equal((await db.query('select count(*) from arena_private.admins')).rows[0].count,1);
   assert.equal((await db.query('select count(*) from arena_private.questions')).rows[0].count,24);
   const fresh=await command(HOST,'create');assert.equal(fresh.room.gameVersion,2);assert.equal(fresh.room.questionCount,12);
+});
+
+test('ArtyQuest móvil: nuevo banco aislado y 80 avatares sin alterar una partida anterior',async t=>{
+  const {db,command,tick,room}=await setup(t);const old=await room();await command(HOST,'start',{roomId:old.id});await tick(old.id);
+  for(let i=0;i<12;i++)await db.query('insert into arena_private.questions(version,position,payload) values(3,$1,$2)',[i,JSON.stringify({...bank[i],id:`mobile-fixture-${i}`})]);
+  const fresh=(await command(HOST,'create',{bankVersion:3})).room;assert.equal(fresh.gameVersion,3);
+  await command(guest(2),'join',{bankVersion:3,code:fresh.code,nickname:'Avatar80',avatarId:79});
+  await assert.rejects(command(guest(3),'join',{bankVersion:3,code:fresh.code,nickname:'BadAvatar',avatarId:80}),/avatar válido/);
+  await command(HOST,'start',{roomId:fresh.id,bankVersion:3});let state=await tick(fresh.id);
+  assert.equal(state.room.currentQuestion.id,'mobile-fixture-0');
+  state=await command(guest(2),'answer',{roomId:fresh.id,bankVersion:3,questionIndex:0,value:1});assert.equal(state.room.phase,'reveal');assert.equal(state.room.answer.correct,true);
+  state=await command(guest(1),'state',{roomId:old.id});assert.equal(state.room.gameVersion,2);assert.equal(state.room.currentQuestion.id,'fixture-0');assert.equal(state.room.currentQuestion.answer,undefined);
 });

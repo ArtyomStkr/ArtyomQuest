@@ -36,7 +36,7 @@ function emit(next) {
 }
 
 async function rpc(action, payload = {}) {
-  const { data, error } = await supabase.rpc('arena_command', { action, payload: {flowVersion:2,...payload} }).abortSignal(AbortSignal.timeout(12000));
+  const { data, error } = await supabase.rpc('arena_command', { action, payload: {flowVersion:2,bankVersion:3,...payload} }).abortSignal(AbortSignal.timeout(12000));
   if (error) throw new Error(message(error));
   if (data.room && data.room.flowVersion !== 2) throw new Error('Falta aplicar la actualización de ArtyQuest en Supabase. Avisa al anfitrión.');
   if (data.serverNow) offset = data.serverNow - Date.now();

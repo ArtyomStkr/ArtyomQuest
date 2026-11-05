@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Code2, Check, CheckCheck, CircleHelp, Copy, Crown, Flame, Gamepad2, LoaderCircle, LogOut, Play, Send, ShieldCheck, Timer, Trophy, Users, X, Zap } from 'lucide-react';
-import PixelAvatar, { avatarName } from './components/PixelAvatar.jsx';
+import AvatarImage, { avatarName, AVATAR_COUNT } from './components/AvatarImage.jsx';
+import Code, {Syntax} from './components/Code.jsx';
 import { ranking } from './domain/ranking.js';
 import { roomService } from './services/index.js';
 
@@ -12,7 +13,7 @@ const transition = { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0
 function Brand({ large = false }) {
   return <span className={`brand ${large ? 'brand-large' : ''}`}><span className="brand-icon"><Gamepad2 /></span><span>Arty<span className="brand-arena">Quest</span><span className="brand-period">.</span></span></span>;
 }
-function Avatar({ id = 0, className = '' }) { return <span className={`avatar ${className}`}><PixelAvatar id={id} /></span>; }
+function Avatar({ id = 0, className = '' }) { return <span className={`avatar ${className}`}><AvatarImage id={id} /></span>; }
 function Button({ children, busy, className = '', ...props }) {
   return <button className={`button ${className}`} {...props} disabled={props.disabled || busy}>{busy ? <><LoaderCircle className="spin" size={19} />Un momento…</> : children}</button>;
 }
@@ -22,10 +23,10 @@ function Modal({ title, children, onClose }) {
   return <dialog ref={ref} className="modal" aria-labelledby="modal-title" onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === ref.current) onClose(); }}><div className="modal-body"><button className="icon-button modal-close" aria-label="Cerrar" onClick={onClose}><X /></button><h2 id="modal-title">{title}</h2>{children}</div></dialog>;
 }
 function Help({ onClose }) {
-  return <Modal title="Así se juega" onClose={onClose}><ol className="help-steps"><li>Entra con el código y tu nombre.</li><li>Elige, ordena, completa código o construye una petición.</li><li>En selección, un toque envía tu respuesta. En los demás retos, pulsa Enviar.</li><li>Mira tus puntos tras cada reto. ¡El mayor puntaje gana!</li></ol><p className="muted">Selección: 1.000 pts · Código, lógica y peticiones: 1.500 pts · Rapidez: hasta 500 pts · Racha: +250 desde el tercer acierto · Fallo enviado a tiempo: 100 pts.</p><Button onClick={onClose}>¡Vamos!<ArrowRight size={18} /></Button></Modal>;
+  return <Modal title="Así se juega" onClose={onClose}><ol className="help-steps"><li>Entra con el código y tu nombre.</li><li>Elige una opción, completa código con fichas o arma una petición guiada.</li><li>En selección, un toque envía tu respuesta. En los demás retos, pulsa Enviar.</li><li>Mira tus puntos tras cada reto. ¡El mayor puntaje gana!</li></ol><p className="muted">Selección: 1.000 pts · Código y peticiones: 1.500 pts · Rapidez: hasta 500 pts · Racha: +250 desde el tercer acierto · Fallo enviado a tiempo: 100 pts.</p><Button onClick={onClose}>¡Vamos!<ArrowRight size={18} /></Button></Modal>;
 }
 function AvatarPicker({ value, onSelect, onClose }) {
-  return <Modal title="Elige tu avatar" onClose={onClose}><div className="avatar-picker">{Array.from({ length: 60 }, (_, id) => <button key={id} className={value === id ? 'chosen' : ''} aria-label={avatarName(id)} aria-pressed={value === id} onClick={() => onSelect(id)}><PixelAvatar id={id} />{value === id && <Check className="avatar-tick" size={16} />}</button>)}</div></Modal>;
+  return <Modal title="Elige tu avatar" onClose={onClose}><div className="avatar-picker">{Array.from({ length: AVATAR_COUNT }, (_, id) => <button key={id} className={value === id ? 'chosen' : ''} aria-label={avatarName(id)} aria-pressed={value === id} onClick={() => onSelect(id)}><AvatarImage id={id} />{value === id && <Check className="avatar-tick" size={16} />}</button>)}</div></Modal>;
 }
 
 function Entry({ onEnter, onHelp }) {
@@ -35,7 +36,7 @@ function Entry({ onEnter, onHelp }) {
   const [nickname, setNickname] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [avatarId, setAvatarId] = useState(() => Math.floor(Math.random() * 60));
+  const [avatarId, setAvatarId] = useState(() => Math.floor(Math.random() * AVATAR_COUNT));
   const [picker, setPicker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -98,10 +99,17 @@ function Lobby({ room, session, onRemove, onCopy }) {
   </section>;
 }
 
-function RequestEditor({ question, value, onChange, disabled }) {
+function LegacyRequestEditor({ question, value, onChange, disabled }) {
   return <div className="request-editor"><div className="request-editor-top"><span className="editor-dot" /><span className="editor-dot" /><span className="editor-dot" /><span>Tu petición</span></div><div className="request-line"><label htmlFor="method"><span>Método</span><select id="method" value={value.method} disabled={disabled} onChange={event => onChange({ ...value, method: event.target.value })} required><option value="">Elegir</option>{['GET','POST','PUT','PATCH','DELETE'].map(method => <option key={method}>{method}</option>)}</select></label><label htmlFor="path"><span>Ruta</span><input id="path" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={value.path} disabled={disabled} placeholder="/api/…" maxLength={200} onChange={event => onChange({ ...value, path: event.target.value })} /></label></div>
     {question.requiresBody && <label className="body-field" htmlFor="body"><span>Cuerpo JSON</span><textarea id="body" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={4000} value={value.body} disabled={disabled} placeholder={'{\n  "campo": "valor"\n}'} onChange={event => onChange({ ...value, body: event.target.value })} /></label>}
   </div>;
+}
+
+function RequestEditor({question,value,onChange,disabled}) {
+  if (!question.endpoint) return <LegacyRequestEditor question={question} value={value} onChange={onChange} disabled={disabled}/>;
+  let body={};try { body=JSON.parse(value.body||'{}'); } catch { /* Incomplete legacy text is replaced by the guided form. */ }
+  function field(key,entry) { onChange({...value,body:JSON.stringify({...body,[key]:entry})}); }
+  return <div className="guided-request"><div className="endpoint-context"><small>Dirección de este ejemplo · ya está dada</small><strong>{question.endpointLabel}</strong><code>{question.endpoint}</code><span>La dirección identifica dónde están los datos.</span></div><fieldset disabled={disabled} className="method-picker"><legend>1. Elige el método HTTP</legend><div>{['GET','POST','PUT','PATCH','DELETE'].map(method=><button key={method} type="button" aria-pressed={value.method===method} className={value.method===method?'chosen':''} onClick={()=>onChange({...value,method})}>{method}</button>)}</div></fieldset>{question.fields?.length>0&&<fieldset disabled={disabled} className="request-fields"><legend>2. Completa el dato que enviarás</legend>{question.fields.map(f=><div className="guided-field" key={f.key}>{f.kind==='boolean'?<><span id={`field-${f.key}`}>{f.label}</span><div className="boolean-picker" role="group" aria-labelledby={`field-${f.key}`}>{[[true,'Sí'],[false,'No']].map(([entry,label])=><button type="button" key={label} aria-pressed={body[f.key]===entry} onClick={()=>field(f.key,entry)}>{label}</button>)}</div></>:<label>{f.label}<input autoComplete="off" maxLength={100} value={body[f.key]??''} placeholder={f.placeholder} onChange={event=>field(f.key,event.target.value)}/></label>}</div>)}</fieldset>}<Code title="Tu petición" language="HTTP / JSON" text={`${value.method||'[método]'} ${question.endpoint}${question.fields?.length?'\n'+JSON.stringify(body,null,2):''}`}/></div>;
 }
 
 function OrderEditor({ question, value, onChange, disabled }) {
@@ -111,28 +119,30 @@ function OrderEditor({ question, value, onChange, disabled }) {
 }
 
 function CodeEditor({ question, value, onChange, disabled }) {
-  return <div className="code-editor"><div className="request-editor-top"><span className="editor-dot"/><span className="editor-dot"/><span className="editor-dot"/><span>Completa el código</span></div><pre><code>{question.template.split(/(\{\{\d+\}\})/).map((part,index) => {
-    const slot = part.match(/^\{\{(\d+)\}\}$/); if (!slot) return part;
-    const i = Number(slot[1]); return <input key={index} aria-label={question.blanks[i].label} value={value[i]} disabled={disabled} maxLength={80} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder={`Espacio ${i+1}`} style={{width:`${Math.min(24,Math.max(11,value[i].length+2))}ch`}} onChange={event => onChange(value.map((entry,j) => j===i ? event.target.value : entry))}/>;
-  })}</code></pre><div className="code-labels">{question.blanks.map((blank,i) => <span key={i}>{i+1}. {blank.label}</span>)}</div></div>;
+  const [active,setActive]=useState(0);
+  const blank=question.blanks[active];
+  function pick(token) { const next=value.map((v,i)=>i===active?token:v);onChange(next);const empty=next.findIndex(v=>!v);if(empty>=0)setActive(empty); }
+  return <div className="code-workspace"><p className="editor-hint">Toca un espacio y elige una ficha. Puedes cambiarla antes de enviar.</p><Code text={question.template} title="Completa las piezas" renderSlot={i=><button type="button" className={`code-slot ${active===i?'active':''} ${value[i]?'filled':''}`} aria-label={`Espacio ${i+1}: ${question.blanks[i].label}`} aria-pressed={active===i} disabled={disabled} onClick={()=>setActive(i)}><small>{i+1}</small>{value[i]||'Elegir'}</button>}/><div className="token-picker"><span className="slot-label">{active+1}. {blank.label}</span>{blank.choices?<div className="token-choices" role="group" aria-label={blank.label}>{blank.choices.map(token=><button key={token} type="button" aria-pressed={value[active]===token} disabled={disabled} onClick={()=>pick(token)}><code><Syntax text={token}/></code></button>)}</div>:<input aria-label={blank.label} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={80} disabled={disabled} value={value[active]} onChange={event=>onChange(value.map((entry,i)=>i===active?event.target.value:entry))}/>}</div></div>;
 }
 
 function Question({ room, session, busy, onAnswer }) {
   const question = room.currentQuestion;
-  const [value, setValue] = useState(room.answer?.value ?? (question.type === 'request' ? { method: '', path: '', body: '' } : question.type === 'order' ? [] : question.type === 'code' ? question.blanks.map(() => '') : null));
+  const [value, setValue] = useState(room.answer?.value ?? (question.type === 'request' ? { method: '', path: question.endpoint || '', body: '' } : question.type === 'order' ? [] : question.type === 'code' ? question.blanks.map(() => '') : null));
   const sending = useRef(false);
   const remaining = useRemaining(room.deadline);
   const admin = session.role === 'admin';
   const sent = Boolean(room.answer);
   const locked = admin || sent || remaining <= 0 || busy || Boolean(room.connectionError);
   const ratio = Math.max(0, Math.min(1, remaining * 1000 / (room.deadline-room.startedAt)));
-  const valid = question.type === 'request' ? value.method && value.path.trim().startsWith('/') && (!question.requiresBody || value.body.trim()) : question.type === 'order' ? value.length === question.items.length : question.type === 'code' ? value.every(entry => entry.trim()) : value !== null;
+  let fieldsReady=true;
+  if(question.fields?.length){try{const body=JSON.parse(value.body||'{}');fieldsReady=question.fields.every(f=>f.kind==='boolean'?typeof body[f.key]==='boolean':typeof body[f.key]==='string'&&body[f.key].trim().length>0);}catch{fieldsReady=false;}}
+  const valid = question.type === 'request' ? value.method && value.path.trim().startsWith('/') && fieldsReady && (!question.requiresBody || value.body.trim()) : question.type === 'order' ? value.length === question.items.length : question.type === 'code' ? value.every(entry => entry.trim()) : value !== null;
   async function send(answer) { if (locked || sending.current) return; sending.current = true; const ok = await onAnswer(answer); if (!ok) sending.current = false; }
   const typeLabel = {quiz:'Elige una',order:'Ordena los pasos',code:'Completa el código',request:'Construye la petición'}[question.type];
   return <section className={`question panel ${remaining <= 5 ? 'question-urgent' : ''}`}><div className="question-top"><span className="question-type"><Code2 size={17}/>{typeLabel}</span><span className="question-value"><Zap size={16} />{number(question.points)} pts</span></div>
     <div className="timer-track" role="progressbar" aria-label="Tiempo restante" aria-valuemin={0} aria-valuemax={Math.ceil((room.deadline-room.startedAt)/1000)} aria-valuenow={Math.ceil(remaining)}><div style={{ width: `${ratio*100}%` }} /></div>
-    <div className="question-copy"><h1>{question.title}</h1><p>{question.prompt}</p></div>{question.code && <pre className="question-code"><code>{question.code}</code></pre>}
-    {sent ? <div className="answer-sent" role="status"><span className="sent-icon"><CheckCheck /></span><h2>¡Respuesta enviada!</h2><p>Tu misión está en manos del servidor.</p><span className="waiting-dots"><i /><i /><i /></span></div> : <>{question.type === 'request' ? <RequestEditor question={question} value={value} onChange={setValue} disabled={locked} /> : question.type === 'order' ? <OrderEditor question={question} value={value} onChange={setValue} disabled={locked}/> : question.type === 'code' ? <CodeEditor question={question} value={value} onChange={setValue} disabled={locked}/> : <><p className="editor-hint">Un toque y queda enviada.</p><div className="answer-grid">{question.options.map((option, index) => <button key={index} className={`answer-option ${value === index ? 'selected' : ''}`} aria-pressed={value === index} disabled={locked} onClick={() => { setValue(index); void send(index); }}><span className="answer-number">{String(index+1).padStart(2,'0')}</span><span>{option}</span>{value === index && <Check className="option-check" size={21} />}</button>)}</div></>}
+    <div className="question-copy"><h1>{question.title}</h1><p>{question.prompt}</p></div>{question.code && <Code text={question.code} title="Datos del ejemplo" language="Referencia"/>}
+    {sent ? <div className="answer-sent" role="status"><span className="sent-icon"><CheckCheck /></span><h2>¡Respuesta enviada!</h2><p>Tu misión está en manos del servidor.</p><span className="waiting-dots"><i /><i /><i /></span></div> : <>{question.type === 'request' ? <RequestEditor question={question} value={value} onChange={setValue} disabled={locked} /> : question.type === 'order' ? <OrderEditor question={question} value={value} onChange={setValue} disabled={locked}/> : question.type === 'code' ? <CodeEditor question={question} value={value} onChange={setValue} disabled={locked}/> : <><p className="editor-hint">Un toque y queda enviada.</p><div className="answer-grid">{question.options.map((option, index) => <button key={index} className={`answer-option ${value === index ? 'selected' : ''}`} aria-pressed={value === index} disabled={locked} onClick={() => { setValue(index); void send(index); }}><span className="answer-number">{String(index+1).padStart(2,'0')}</span><span>{question.optionsAreCode?<code><Syntax text={option}/></code>:option}</span>{value === index && <Check className="option-check" size={21} />}</button>)}</div></>}
     {!admin && question.type!=='quiz' && <Button className="submit-answer" disabled={!valid || locked} busy={busy} onClick={() => send(value)}>{remaining <= 0 ? '¡Tiempo!' : 'Enviar respuesta'}<Send size={19} /></Button>}</>}
     <div className="question-bottom"><span><Users size={16} />{room.answeredCount}/{Object.keys(room.players).length} respuestas</span><span className={`time-number ${remaining <= 5 ? 'urgent' : ''}`}><Timer size={19} /><strong>{Math.ceil(remaining)}</strong><small>s</small></span></div>
     {remaining <= 0 && <p className="waiting-caption" role="status">Cerrando reto…</p>}
@@ -140,8 +150,8 @@ function Question({ room, session, busy, onAnswer }) {
 }
 
 function Solution({ question:q }) {
-  const code = q.type==='request' ? `${q.request.method} ${q.request.path}${q.request.body ? `\n${JSON.stringify(q.request.body,null,2)}` : ''}` : q.type==='code' ? q.template.replace(/\{\{(\d+)\}\}/g,(_,i) => q.answer[Number(i)]) : null;
-  return <details className="solution"><summary>Ver solución y explicación</summary>{code ? <pre><code>{code}</code></pre> : q.type==='order' ? <ol>{q.answer.map(id => <li key={id}><code>{q.items.find(item => item.id===id)?.text}</code></li>)}</ol> : <strong>{q.options[q.answer]}</strong>}<p>{q.explanation}</p></details>;
+  const code = q.type==='request' ? `${q.request.method} ${q.request.path}${q.request.body ? `\n${JSON.stringify(q.request.body,null,2)}` : ''}` : q.type==='code' ? q.template.replace(/\{\{(\d+)\}\}/g,(_,i) => q.answer[Number(i)]) : q.optionsAreCode?q.options[q.answer]:null;
+  return <section className="solution" aria-label="Solución y explicación"><h2><CheckCheck size={20}/>Solución</h2>{code ? <Code text={code} title="Respuesta correcta" language={q.type==='request'?'HTTP / JSON':q.type==='quiz'?'JSON':'PHP'}/> : q.type==='order' ? <ol>{q.answer.map(id => <li key={id}><code>{q.items.find(item => item.id===id)?.text}</code></li>)}</ol> : <strong>{q.options[q.answer]}</strong>}<p>{q.explanation}</p></section>;
 }
 
 function Result({ room, session }) {
@@ -149,7 +159,7 @@ function Result({ room, session }) {
   const admin = session.role === 'admin';
   const correct = answer?.correct;
   const text = admin ? '¡Reto cerrado!' : correct ? '¡Bien jugado!' : answer ? '¡La próxima es tuya!' : '¡Se acabó el tiempo!';
-  return <div className="result-stack"><section className={`result panel ${admin ? 'result-neutral' : correct ? 'result-correct' : 'result-wrong'}`}><div className="result-burst">{admin ? <CheckCheck /> : correct ? <Zap fill="currentColor" /> : <X />}</div><h1>{text}</h1>{!admin && <div className="earned-points">+{number(answer?.earned)}<span>puntos</span></div>}{correct && answer?.streakBonus > 0 && <span className="streak-pill"><Flame size={17} />¡En racha! +{answer.streakBonus}</span>}</section><Leaderboard room={room} session={session}/><Solution question={room.currentQuestion}/></div>;
+  return <div className="result-stack"><section className={`result panel ${admin ? 'result-neutral' : correct ? 'result-correct' : 'result-wrong'}`}><div className="result-burst">{admin ? <CheckCheck /> : correct ? <Zap fill="currentColor" /> : <X />}</div><h1>{text}</h1>{!admin && <div className="earned-points">+{number(answer?.earned)}<span>puntos</span></div>}{correct && answer?.streakBonus > 0 && <span className="streak-pill"><Flame size={17} />¡En racha! +{answer.streakBonus}</span>}</section><Solution question={room.currentQuestion}/><Leaderboard room={room} session={session}/></div>;
 }
 
 function Countdown({ room }) {
