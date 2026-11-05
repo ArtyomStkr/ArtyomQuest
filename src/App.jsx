@@ -26,7 +26,7 @@ function Help({ onClose }) {
   return <Modal title="Así se juega" onClose={onClose}><ol className="help-steps"><li>Entra con el código y tu nombre.</li><li>Elige una opción, completa código con fichas o arma una petición guiada.</li><li>En selección, un toque envía tu respuesta. En los demás retos, pulsa Enviar.</li><li>Mira tus puntos tras cada reto. ¡El mayor puntaje gana!</li></ol><p className="muted">Selección: 1.000 pts · Código y peticiones: 1.500 pts · Rapidez: hasta 500 pts · Racha: +250 desde el tercer acierto · Fallo enviado a tiempo: 100 pts.</p><Button onClick={onClose}>¡Vamos!<ArrowRight size={18} /></Button></Modal>;
 }
 function AvatarPicker({ value, onSelect, onClose }) {
-  return <Modal title="Elige tu avatar" onClose={onClose}><div className="avatar-picker">{Array.from({ length: AVATAR_COUNT }, (_, id) => <button key={id} className={value === id ? 'chosen' : ''} aria-label={avatarName(id)} aria-pressed={value === id} onClick={() => onSelect(id)}><AvatarImage id={id} />{value === id && <Check className="avatar-tick" size={16} />}</button>)}</div></Modal>;
+  return <Modal title="Elige tu avatar" onClose={onClose}><div className="avatar-picker">{Array.from({ length: AVATAR_COUNT }, (_, id) => <button key={id} className={value === id ? 'chosen' : ''} aria-label={`Elegir avatar ${id+1}`} aria-pressed={value === id} onClick={() => onSelect(id)}><AvatarImage id={id} />{value === id && <Check className="avatar-tick" size={16} />}</button>)}</div></Modal>;
 }
 
 function Entry({ onEnter, onHelp }) {
