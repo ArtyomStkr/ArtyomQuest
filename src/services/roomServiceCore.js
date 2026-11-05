@@ -1,5 +1,9 @@
 export function createRoomService(supabase, storage, environment={}) {
 const {window,document}=environment;
+const connectionId=environment.randomUUID?.()??crypto.randomUUID();
+let attached=false;
+let departing=false;
+let accessToken=null;
 
 const SESSION = 'rest-arena:v3:session';
 let activeSession = null;
@@ -10,11 +14,13 @@ let retryTimer = null;
 let stateRetryTimer = null;
 let terminalError = false;
 let heartbeat = null;
+let heartbeatStart = null;
 let offset = 0;
 let lastError = '';
 let generation = 0;
 let refreshing = false;
 let refreshAgain = false;
+let refreshAgainAction='state';
 const listeners = new Set();
 
 function message(error) {
@@ -31,7 +37,9 @@ function emit(next) {
   room = next;
   listeners.forEach(listener => listener(room));
   clearTimeout(deadlineTimer);
-  const target = room?.phase === 'question' ? room.deadline : ['countdown','scoreboard'].includes(room?.phase) ? room.transitionAt : null;
+  const stageDeadline=room?.phase==='question'?room.deadline:['countdown','scoreboard'].includes(room?.phase)?room.transitionAt:null;
+  const targets=[stageDeadline,room?.presenceDeadline,room?.endAt].filter(value=>Number.isFinite(value)&&value>0);
+  const target=targets.length?Math.min(...targets):null;
   if (target) {
     // One request at the deadline, not one database write per timer tick.
     deadlineTimer = setTimeout(refresh, room.connectionError ? 5000 : Math.max(150, target - roomService.now() + 200));
@@ -39,16 +47,21 @@ function emit(next) {
 }
 
 async function rpc(action, payload = {}) {
-  const { data, error } = await supabase.rpc('arena_command', { action, payload: {flowVersion:2,bankVersion:3,...payload} }).abortSignal(AbortSignal.timeout(12000));
+  const { data, error } = await supabase.rpc('arena_command', { action, payload: {flowVersion:2,bankVersion:4,clientVersion:4,connectionId,background:Boolean(document?.hidden),...payload} }).abortSignal(AbortSignal.timeout(12000));
   if (error) throw new Error(message(error));
   if (data.room && data.room.flowVersion !== 2) throw new Error('Falta aplicar la actualización de ArtyQuest en Supabase. Avisa al anfitrión.');
   if (data.serverNow) offset = data.serverNow - Date.now();
   return data;
 }
 
-async function refresh() {
-  if (!activeSession || !listeners.size) return;
-  if (refreshing) { refreshAgain = true; return; }
+function acceptClosed(data){
+  lastError=data.reason||'La sala terminó.';terminalError=true;
+  activeSession=null;storage.removeItem(SESSION);disconnect();emit(null);
+}
+
+async function refresh(action='state') {
+  if (!activeSession || !listeners.size || departing) return;
+  if (refreshing) { refreshAgain = true;if(action==='heartbeat')refreshAgainAction='heartbeat';return; }
   const version = generation;
   refreshing = true;
   try {
@@ -57,8 +70,11 @@ async function refresh() {
     const identity = await supabase.auth.getSession();
     if (identity.error) throw new Error(message(identity.error));
     if (!identity.data.session) throw new Error('No se pudo recuperar tu acceso. Reintenta o vuelve a entrar con tu cuenta o código.');
-    const data = await rpc('state', { roomId: activeSession.roomId });
+    accessToken=identity.data.session.access_token||accessToken;
+    const data = await rpc(attached?action:'attach', { roomId: activeSession.roomId });
     if (version !== generation) return;
+    if(data.closed){acceptClosed(data);return;}
+    attached=true;
     lastError = ''; terminalError = false;
     if(data.session) saveSession(data.session);
     emit({ ...data.room, connectionError: null });
@@ -74,7 +90,7 @@ async function refresh() {
     }
   } finally {
     refreshing = false;
-    if (refreshAgain) { refreshAgain = false; void refresh(); }
+    if (refreshAgain) { const next=refreshAgainAction;refreshAgain=false;refreshAgainAction='state';void refresh(next); }
   }
 }
 
@@ -86,10 +102,12 @@ function disconnect() {
   clearTimeout(retryTimer);
   clearTimeout(stateRetryTimer);
   clearInterval(heartbeat);
+  clearTimeout(heartbeatStart);
 }
 
 function connect() {
   disconnect();
+  attached=false;departing=false;
   if (!activeSession || !listeners.size) return;
   const version = generation;
   channel = supabase.channel(`room:${activeSession.roomId}:${version}`)
@@ -106,13 +124,15 @@ function connect() {
       }
     });
   // Recovery when a device resumes or misses an event; Realtime is the primary transport.
-  heartbeat = setInterval(refresh, 30000);
+  heartbeatStart=setTimeout(()=>{void refresh('heartbeat');heartbeat=setInterval(()=>{void refresh('heartbeat');},20000);},Math.floor(Math.random()*3000));
   void refresh();
 }
 
 function saveSession(session) { activeSession=session; storage.setItem(SESSION,JSON.stringify(session)); }
 
 async function accept(data) {
+  if(data.closed)throw new Error(data.reason||'Esta sala ya terminó.');
+  if(!data.session||!data.room)throw new Error('No se pudo abrir la sala.');
   saveSession(data.session);
   emit(data.room);
   if (listeners.size) connect();
@@ -121,6 +141,7 @@ async function accept(data) {
 
 async function command(session, action, payload = {}) {
   const data = await rpc(action, { roomId: session.roomId, ...payload });
+  if(data.closed){acceptClosed(data);return null;}
   lastError = ''; terminalError=false;
   if(data.session) saveSession(data.session);
   emit(data.room);
@@ -141,7 +162,7 @@ const roomService = {
     return activeSession;
   },
   setSession: saveSession,
-  clearSession() { disconnect(); activeSession = null; lastError = ''; storage.removeItem(SESSION); emit(null); },
+  clearSession() { disconnect(); activeSession = null; lastError = '';terminalError=false; storage.removeItem(SESSION); emit(null); },
   subscribe(listener) {
     listeners.add(listener);
     if (listeners.size === 1) connect();
@@ -167,13 +188,19 @@ const roomService = {
   answer: (session, value) => command(session, 'answer', { value, questionIndex:room?.questionIndex }),
   removePlayer: (session, playerId) => command(session, 'remove', { playerId }),
   updateSettings: (session, seconds) => command(session, 'settings', { seconds }),
-  async leave(session) { await command(session, 'leave'); this.clearSession(); },
+  async leave(session) { await command(session, session.role==='admin'?'close':'leave');try{await supabase.auth.signOut({scope:'local'});}catch{/* Room membership is already revoked. */}this.clearSession(); },
   dispose: () => disconnect(),
 };
 
 if (window && document) {
   window.addEventListener('online', () => { if (activeSession && listeners.size) connect(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) void refresh(); });
+  document.addEventListener('visibilitychange', () => { void refresh('heartbeat'); });
+  window.addEventListener('pagehide',event=>{
+    if(event.persisted||!activeSession)return;
+    departing=true;
+    if(accessToken)environment.sendDeparture?.({roomId:activeSession.roomId,connectionId,accessToken});
+  });
+  window.addEventListener('pageshow',event=>{if(event.persisted&&activeSession)connect();});
 }
 
 return roomService;

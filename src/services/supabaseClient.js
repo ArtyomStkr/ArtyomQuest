@@ -13,3 +13,12 @@ export const supabase = createClient(url, key, {
     detectSessionInUrl: false,
   },
 });
+
+// Only the current tab's token is used, in memory. No secrets in URLs or logs.
+export function sendDeparture({roomId,connectionId,accessToken}){
+  void fetch(`${url}/rest/v1/rpc/arena_command`,{
+    method:'POST',keepalive:true,
+    headers:{apikey:key,Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
+    body:JSON.stringify({action:'depart',payload:{roomId,connectionId,clientVersion:4,flowVersion:2,bankVersion:4}}),
+  }).catch(()=>{});
+}
